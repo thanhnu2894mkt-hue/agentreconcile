@@ -41,17 +41,21 @@ HTML = """<!DOCTYPE html>
     box-shadow: 0 8px 40px rgba(0,0,0,0.4);
     padding: 40px 48px;
     max-width: 660px; width: 100%;
+    position: relative; z-index: 1;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial Black,Arial' font-weight='900' font-size='60' fill='rgba(255,255,255,0.04)'%3E%24%3C/text%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 120px 120px;
+    pointer-events: none; user-select: none;
+    z-index: 0;
   }
   .header { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
-  .logo {
-    width: 44px; height: 44px; border-radius: 12px;
-    background: linear-gradient(135deg, #e94560, #0f3460);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 22px; flex-shrink: 0;
-    box-shadow: 0 4px 12px rgba(233,69,96,0.4);
-  }
+  .logo { flex-shrink: 0; filter: drop-shadow(0 2px 8px rgba(0,106,245,0.4)); }
   h1 { font-size: 22px; font-weight: 700; color: #fff; }
-  .subtitle { font-size: 13px; color: rgba(255,255,255,0.5); margin-bottom: 28px; padding-left: 58px; }
+  .subtitle { font-size: 13px; color: rgba(255,255,255,0.5); margin-bottom: 28px; text-align: center; margin-top: 10px; }
   .divider { height: 1px; background: rgba(255,255,255,0.08); margin-bottom: 24px; }
 
   .file-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
@@ -90,25 +94,42 @@ HTML = """<!DOCTYPE html>
     background: rgba(0,210,160,0.08); border-style: solid;
   }
   .file-btn .icon { font-size: 15px; flex-shrink: 0; }
-  .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 110px; }
+  .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; }
+  .clear-btn {
+    margin-left: auto; flex-shrink: 0;
+    font-size: 14px; color: rgba(255,255,255,0.25);
+    cursor: pointer; padding: 0 2px; line-height: 1;
+    transition: color 0.15s;
+  }
+  .clear-btn:hover { color: #fc8181; }
+  .file-btn:not(.selected) .clear-btn { display: none; }
 
   .bottom-row { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
   .period-wrap { display: flex; align-items: center; gap: 10px; }
   .period-wrap label { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.6); white-space: nowrap; }
-  .period-wrap input {
-    padding: 8px 12px; width: 64px;
+  .period-wrap select {
+    padding: 8px 12px; width: 120px;
     background: rgba(255,255,255,0.07); border: 1.5px solid rgba(255,255,255,0.15);
-    border-radius: 8px; color: #fff; font-size: 15px; font-weight: 600; text-align: center;
+    border-radius: 8px; color: #fff; font-size: 14px; font-weight: 600;
+    cursor: pointer;
   }
-  .period-wrap input:focus { outline: none; border-color: #e94560; }
+  .period-wrap select:focus { outline: none; border-color: #e94560; }
+  .period-wrap select option { background: #16213e; color: #fff; }
 
   .progress-bar-wrap { flex: 1; }
   .progress-label { font-size: 11px; color: rgba(255,255,255,0.4); margin-bottom: 5px; }
-  .progress-track { height: 6px; background: rgba(255,255,255,0.1); border-radius: 99px; overflow: hidden; }
+  .progress-track { position: relative; height: 10px; background: rgba(255,255,255,0.1); border-radius: 99px; overflow: visible; }
   .progress-fill {
-    height: 100%; border-radius: 99px; transition: width 0.3s;
+    height: 100%; border-radius: 99px; transition: width 0.4s cubic-bezier(.34,1.56,.64,1);
     background: linear-gradient(90deg, #7928ca, #e94560, #ff8c00);
     width: 0%;
+  }
+  .progress-rabbit {
+    position: absolute; top: 50%; font-size: 18px;
+    transform: translate(-50%, -60%);
+    transition: left 0.4s cubic-bezier(.34,1.56,.64,1);
+    left: 0%; pointer-events: none; line-height: 1;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
   }
 
   .btn {
@@ -156,17 +177,47 @@ HTML = """<!DOCTYPE html>
     margin-right: 8px; vertical-align: middle;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-bar-wrap { display: none; margin-top: 14px; }
+  .loading-bar-wrap.show { display: block; }
+  .loading-track {
+    position: relative; height: 10px;
+    background: rgba(255,255,255,0.08); border-radius: 99px; overflow: visible;
+  }
+  .loading-fill {
+    height: 100%; border-radius: 99px;
+    background: linear-gradient(90deg, #7928ca, #e94560, #ff8c00);
+    animation: loading-slide 2s ease-in-out infinite alternate;
+  }
+  .loading-animal {
+    position: absolute; top: 50%; font-size: 22px;
+    transform: translateY(-55%);
+    animation: animal-run 2s ease-in-out infinite alternate;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+    pointer-events: none; line-height: 1;
+  }
+  @keyframes loading-slide {
+    0%   { width: 15%; margin-left: 0; }
+    100% { width: 35%; margin-left: 58%; }
+  }
+  @keyframes animal-run {
+    0%   { left: 5%; }
+    100% { left: 85%; }
+  }
 </style>
 </head>
 <body>
 <div class="card">
   <div class="header">
-    <div class="logo">📊</div>
+    <svg class="logo" viewBox="0 0 148 36" xmlns="http://www.w3.org/2000/svg" style="width:148px;height:36px">
+      <text x="0" y="28" font-family="Arial Black,Arial,sans-serif" font-weight="900" font-size="30" fill="#006AF5">Zalo</text>
+      <text x="74" y="28" font-family="Arial Black,Arial,sans-serif" font-weight="900" font-size="30" fill="#00C259">pay</text>
+    </svg>
     <div>
       <h1>Bank Reconcile Agent</h1>
     </div>
   </div>
-  <p class="subtitle">ZION &times; SACOMBANK &mdash; Upload 6 file Excel để chạy đối soát tự động</p>
+  <p class="subtitle">Upload 6 file Excel để chạy đối soát tự động</p>
   <div class="divider"></div>
 
   <div class="drop-zone" id="drop-zone" onclick="document.getElementById('f-all').click()" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
@@ -182,6 +233,7 @@ HTML = """<!DOCTYPE html>
       <label><span class="badge badge-zion">ZION</span> Thành công</label>
       <div class="file-btn" id="btn-TC" onclick="document.getElementById('f-TC').click()">
         <span class="icon">📄</span><span class="file-name" id="name-TC">Chọn file...</span>
+        <span class="clear-btn" onclick="clearFile(event,'TC')" title="Xóa file">✕</span>
       </div>
       <input type="file" id="f-TC" accept=".xlsx" onchange="setFile('TC',this)">
     </div>
@@ -189,6 +241,7 @@ HTML = """<!DOCTYPE html>
       <label><span class="badge badge-zion">ZION</span> Hoàn tiền</label>
       <div class="file-btn" id="btn-RF" onclick="document.getElementById('f-RF').click()">
         <span class="icon">📄</span><span class="file-name" id="name-RF">Chọn file...</span>
+        <span class="clear-btn" onclick="clearFile(event,'RF')" title="Xóa file">✕</span>
       </div>
       <input type="file" id="f-RF" accept=".xlsx" onchange="setFile('RF',this)">
     </div>
@@ -196,6 +249,7 @@ HTML = """<!DOCTYPE html>
       <label><span class="badge badge-zion">ZION</span> Hoàn tiền CV</label>
       <div class="file-btn" id="btn-CV" onclick="document.getElementById('f-CV').click()">
         <span class="icon">📄</span><span class="file-name" id="name-CV">Chọn file...</span>
+        <span class="clear-btn" onclick="clearFile(event,'CV')" title="Xóa file">✕</span>
       </div>
       <input type="file" id="f-CV" accept=".xlsx" onchange="setFile('CV',this)">
     </div>
@@ -203,6 +257,7 @@ HTML = """<!DOCTYPE html>
       <label><span class="badge badge-apple">🍎</span> Apple Pay</label>
       <div class="file-btn" id="btn-AP" onclick="document.getElementById('f-AP').click()">
         <span class="icon">📄</span><span class="file-name" id="name-AP">Chọn file...</span>
+        <span class="clear-btn" onclick="clearFile(event,'AP')" title="Xóa file">✕</span>
       </div>
       <input type="file" id="f-AP" accept=".xlsx" onchange="setFile('AP',this)">
     </div>
@@ -210,6 +265,7 @@ HTML = """<!DOCTYPE html>
       <label><span class="badge badge-jcb">JCB</span> BIN Lookup</label>
       <div class="file-btn" id="btn-JCB" onclick="document.getElementById('f-JCB').click()">
         <span class="icon">📄</span><span class="file-name" id="name-JCB">Chọn file...</span>
+        <span class="clear-btn" onclick="clearFile(event,'JCB')" title="Xóa file">✕</span>
       </div>
       <input type="file" id="f-JCB" accept=".xlsx" onchange="setFile('JCB',this)">
     </div>
@@ -217,6 +273,7 @@ HTML = """<!DOCTYPE html>
       <label><span class="badge badge-sacom">SACOMBANK</span></label>
       <div class="file-btn" id="btn-SB" onclick="document.getElementById('f-SB').click()">
         <span class="icon">📄</span><span class="file-name" id="name-SB">Chọn file...</span>
+        <span class="clear-btn" onclick="clearFile(event,'SB')" title="Xóa file">✕</span>
       </div>
       <input type="file" id="f-SB" accept=".xlsx" onchange="setFile('SB',this)">
     </div>
@@ -224,16 +281,27 @@ HTML = """<!DOCTYPE html>
 
   <div class="bottom-row">
     <div class="period-wrap">
-      <label>Kỳ (MM):</label>
-      <input type="text" id="period" value="05" maxlength="2" placeholder="05">
+      <label>Kỳ:</label>
+      <select id="period">
+        <option value="">--</option>
+      </select>
     </div>
     <div class="progress-bar-wrap">
       <div class="progress-label" id="progress-label">0 / 6 file đã chọn</div>
-      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progress-fill"></div>
+        <span class="progress-rabbit" id="progress-rabbit">🐇</span>
+      </div>
     </div>
   </div>
 
   <button class="btn" id="run-btn" onclick="runRecon()" disabled>⚡ Chạy đối soát</button>
+  <div class="loading-bar-wrap" id="loading-bar">
+    <div class="loading-track">
+      <div class="loading-fill"></div>
+      <span class="loading-animal" id="animal">🐇</span>
+    </div>
+  </div>
   <div class="status" id="status"></div>
 </div>
 
@@ -264,26 +332,76 @@ function detectKey(filename) {
   return null;
 }
 
-function applyFile(key, file) {
+async function applyFile(key, file) {
+  // 1. Kiểm tra đuôi file
+  if (!file.name.toLowerCase().endsWith('.xlsx')) {
+    showError(`❌ File "${file.name}" không đúng định dạng — chỉ chấp nhận .xlsx`);
+    return;
+  }
+  // 2. Kiểm tra cấu trúc cột trên server
+  const form = new FormData();
+  form.append('file', file);
+  form.append('key', key);
+  try {
+    const res = await fetch('/validate-file', { method: 'POST', body: form });
+    const data = await res.json();
+    if (!data.ok) {
+      showError(`❌ ${data.error}`);
+      return;
+    }
+  } catch(e) { /* bỏ qua nếu network lỗi */ }
+
   files[key] = file;
   document.getElementById('name-' + key).textContent = file.name;
   const btn = document.getElementById('btn-' + key);
   btn.classList.add('selected');
   btn.querySelector('.icon').textContent = '✅';
+  if (key === 'SB') detectPeriods(file);
+  checkReady();
 }
 
-function autoDetect(fileList) {
+function showError(msg) {
+  const s = document.getElementById('status');
+  s.className = 'status error';
+  s.style.display = 'block';
+  s.innerHTML = msg;
+  setTimeout(() => { if (s.innerHTML === msg) s.style.display = 'none'; }, 5000);
+}
+
+async function detectPeriods(file) {
+  const sel = document.getElementById('period');
+  sel.innerHTML = '<option value="">Đang đọc kỳ...</option>';
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/detect-periods', { method: 'POST', body: form });
+    const data = await res.json();
+    if (data.periods && data.periods.length > 0) {
+      sel.innerHTML = data.periods.map(p =>
+        `<option value="${p}">Tháng ${p}</option>`
+      ).join('');
+    } else {
+      sel.innerHTML = '<option value="">Không tìm thấy kỳ</option>';
+    }
+  } catch(e) {
+    sel.innerHTML = '<option value="">Lỗi đọc file</option>';
+  }
+}
+
+async function autoDetect(fileList) {
   const unmatched = [];
-  Array.from(fileList).forEach(f => {
+  const promises = Array.from(fileList).map(async f => {
     const key = detectKey(f.name);
-    if (key) applyFile(key, f);
+    if (key) await applyFile(key, f);
     else unmatched.push(f.name);
   });
+  await Promise.all(promises);
   if (unmatched.length) {
     const s = document.getElementById('status');
     s.className = 'status error';
     s.style.display = 'block';
-    s.innerHTML = '⚠️ Không nhận dạng được: ' + unmatched.join(', ');
+    s.innerHTML = '⚠️ Không nhận dạng được tên file: ' + unmatched.map(n => `<b>${n}</b>`).join(', ') + '<br><small>Đổi tên file theo quy ước hoặc kéo thả vào đúng ô bên dưới</small>';
+    setTimeout(() => { if (s.classList.contains('error')) s.style.display='none'; }, 6000);
   }
   checkReady();
 }
@@ -299,6 +417,16 @@ function onDrop(e) {
 function setFile(key, input) {
   if (!input.files[0]) return;
   applyFile(key, input.files[0]);
+}
+
+function clearFile(e, key) {
+  e.stopPropagation();
+  delete files[key];
+  document.getElementById('name-' + key).textContent = 'Chọn file...';
+  const btn = document.getElementById('btn-' + key);
+  btn.classList.remove('selected');
+  btn.querySelector('.icon').textContent = '📄';
+  document.getElementById('f-' + key).value = '';
   checkReady();
 }
 
@@ -306,16 +434,20 @@ function checkReady() {
   const count = keys.filter(k => files[k]).length;
   const ready = count === keys.length;
   document.getElementById('run-btn').disabled = !ready;
+  const pct = count / 6 * 100;
   document.getElementById('progress-label').textContent = count + ' / 6 file đã chọn';
-  document.getElementById('progress-fill').style.width = (count / 6 * 100) + '%';
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-rabbit').style.left = Math.min(pct, 93) + '%';
+  document.getElementById('progress-rabbit').textContent = count === 6 ? '🐇' : '🐢';
 }
 
 async function runRecon() {
   const status = document.getElementById('status');
   const btn = document.getElementById('run-btn');
   btn.disabled = true;
+  document.getElementById('loading-bar').classList.add('show');
   status.className = 'status running';
-  status.innerHTML = '<span class="spinner"></span> Đang xử lý đối soát, vui lòng chờ...';
+  status.innerHTML = '🐇 Đang xử lý đối soát, vui lòng chờ...';
 
   const form = new FormData();
   keys.forEach(k => form.append(k, files[k]));
@@ -341,6 +473,7 @@ async function runRecon() {
     status.innerHTML = '❌ Lỗi: ' + e.message;
   } finally {
     btn.disabled = false;
+    document.getElementById('loading-bar').classList.remove('show');
   }
 }
 </script>
@@ -371,6 +504,62 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {"error": "not found"})
 
     def do_POST(self):
+        if self.path.rstrip("/") == "/validate-file":
+            try:
+                ctype, pdict = cgi.parse_header(self.headers.get("Content-Type", ""))
+                pdict["boundary"] = pdict["boundary"].encode()
+                pdict["CONTENT-LENGTH"] = int(self.headers.get("Content-Length", 0))
+                fields = cgi.parse_multipart(self.rfile, pdict)
+                data = fields.get("file", [None])[0]
+                key  = (fields.get("key", [b""])[0] or b"").decode() if isinstance(fields.get("key", [b""])[0], bytes) else fields.get("key", [""])[0]
+                if data is None: self._json(400, {"ok": False, "error": "Thiếu file"}); return
+                if isinstance(data, str): data = data.encode()
+                import io as _io, pandas as _pd
+                REQUIRED = {
+                    "TC":  ["Bank Trans ID", "Is On Us", "Fee Rate", "Amount"],
+                    "RF":  ["Refund Bank Trans ID"],
+                    "CV":  ["Refund Bank Trans ID", "PHI ZLP"],
+                    "AP":  ["RequestID", "BinCountry", "BinIssuer"],
+                    "JCB": ["BIN 8 SỐ"],
+                    "SB":  ["BOOK_DATE", "ReqRecId", "DISCOUNT"],
+                }
+                # AP file has 1 metadata row before the real header
+                SKIPROWS = {"AP": 1}
+                try:
+                    df = _pd.read_excel(_io.BytesIO(data), nrows=2,
+                                        skiprows=SKIPROWS.get(key, 0))
+                except Exception:
+                    self._json(200, {"ok": False, "error": "File không đọc được, vui lòng kiểm tra lại định dạng .xlsx"}); return
+                cols = list(df.columns)
+                expected = REQUIRED.get(key, [])
+                missing = [c for c in expected if c not in cols]
+                if missing:
+                    self._json(200, {"ok": False, "error": f"File không đúng cấu trúc. Thiếu cột: {', '.join(missing)}"}); return
+                self._json(200, {"ok": True})
+            except Exception as e:
+                self._json(500, {"error": str(e)})
+            return
+        if self.path.rstrip("/") == "/detect-periods":
+            try:
+                ctype, pdict = cgi.parse_header(self.headers.get("Content-Type", ""))
+                pdict["boundary"] = pdict["boundary"].encode()
+                pdict["CONTENT-LENGTH"] = int(self.headers.get("Content-Length", 0))
+                fields = cgi.parse_multipart(self.rfile, pdict)
+                data = fields.get("file", [None])[0]
+                if data is None:
+                    self._json(400, {"error": "Thiếu file"}); return
+                if isinstance(data, str): data = data.encode()
+                import io as _io
+                import pandas as _pd
+                df = _pd.read_excel(_io.BytesIO(data)).dropna(axis=1, how="all")
+                periods = []
+                if "BOOK_DATE" in df.columns:
+                    raw = df["BOOK_DATE"].dropna().astype("Int64").astype(str)
+                    periods = sorted(set(r[4:6] for r in raw if len(r) == 8))
+                self._json(200, {"periods": periods})
+            except Exception as e:
+                self._json(500, {"error": str(e)})
+            return
         if self.path.rstrip("/") != "/reconcile":
             self._json(404, {"error": "not found"})
             return
