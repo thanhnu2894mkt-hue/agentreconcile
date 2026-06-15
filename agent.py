@@ -1,85 +1,459 @@
-"""BODY cua agent — HTTP endpoint cho AgentBase runtime.
-
-Dung thu vien chuan (khong them dependency). Mo cong 8000.
+"""Agent HTTP server — UI + API cho AgentBase runtime.
 
 Endpoints:
-  GET  /            -> thong tin agent
-  GET  /health      -> {"status": "ok"}
-  POST /reconcile   -> chay doi soat tren du lieu trong INPUT_DIR, tra ve summary JSON
-  GET  /report      -> tai file Excel ket qua moi nhat
-
-Chay:  python agent.py     (hoac qua Docker: CMD mac dinh)
+  GET  /           -> giao dien web upload file
+  GET  /health     -> {"status": "ok"}
+  POST /reconcile  -> nhan 6 file upload, chay doi soat, tra ve Excel
 """
+import cgi
+import io
 import json
 import os
+import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import config as C
 from src.recon import run_recon
 from src.report import build_report
 
-PORT = int(os.environ.get("PORT", "8000"))
-INFO = {
-    "agent": "ZION x SACOMBANK Reconciliation Agent",
-    "version": "1.0",
-    "description": "Doi soat phi giao dich ZION voi SACOMBANK, xuat bao cao Excel.",
-    "endpoints": {
-        "GET /health": "kiem tra song",
-        "POST /reconcile": "chay doi soat -> tra ve summary JSON",
-        "GET /report": "tai file Excel ket qua moi nhat",
-    },
+PORT = int(os.environ.get("PORT", "8080"))
+
+HTML = """<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bank Reconcile Agent</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  }
+  .card {
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 20px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+    padding: 40px 48px;
+    max-width: 660px; width: 100%;
+  }
+  .header { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+  .logo {
+    width: 44px; height: 44px; border-radius: 12px;
+    background: linear-gradient(135deg, #e94560, #0f3460);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(233,69,96,0.4);
+  }
+  h1 { font-size: 22px; font-weight: 700; color: #fff; }
+  .subtitle { font-size: 13px; color: rgba(255,255,255,0.5); margin-bottom: 28px; padding-left: 58px; }
+  .divider { height: 1px; background: rgba(255,255,255,0.08); margin-bottom: 24px; }
+
+  .file-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+  .file-item label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.55);
+    margin-bottom: 7px; text-transform: uppercase; letter-spacing: 0.8px;
+  }
+  .badge {
+    font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px;
+    color: #fff; letter-spacing: 0.3px;
+  }
+  .badge-zion  { background: linear-gradient(90deg,#16a34a,#22c55e); }
+  .badge-apple { background: linear-gradient(90deg,#555,#111); }
+  .badge-jcb   { background: linear-gradient(90deg,#cc0000,#ff2222); }
+  .badge-sacom { background: linear-gradient(90deg,#1d4ed8,#3b82f6); }
+
+  .file-item input[type=file] { display: none; }
+  .file-btn {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 14px;
+    border: 1.5px dashed rgba(255,255,255,0.2);
+    border-radius: 10px; cursor: pointer;
+    font-size: 13px; color: rgba(255,255,255,0.4);
+    transition: all 0.2s;
+    background: rgba(255,255,255,0.04);
+    width: 100%;
+  }
+  .file-btn:hover {
+    border-color: #e94560; color: #ff6b81;
+    background: rgba(233,69,96,0.08);
+    transform: translateY(-1px);
+  }
+  .file-btn.selected {
+    border-color: #00d2a0; color: #00d2a0;
+    background: rgba(0,210,160,0.08); border-style: solid;
+  }
+  .file-btn .icon { font-size: 15px; flex-shrink: 0; }
+  .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 110px; }
+
+  .bottom-row { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+  .period-wrap { display: flex; align-items: center; gap: 10px; }
+  .period-wrap label { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.6); white-space: nowrap; }
+  .period-wrap input {
+    padding: 8px 12px; width: 64px;
+    background: rgba(255,255,255,0.07); border: 1.5px solid rgba(255,255,255,0.15);
+    border-radius: 8px; color: #fff; font-size: 15px; font-weight: 600; text-align: center;
+  }
+  .period-wrap input:focus { outline: none; border-color: #e94560; }
+
+  .progress-bar-wrap { flex: 1; }
+  .progress-label { font-size: 11px; color: rgba(255,255,255,0.4); margin-bottom: 5px; }
+  .progress-track { height: 6px; background: rgba(255,255,255,0.1); border-radius: 99px; overflow: hidden; }
+  .progress-fill {
+    height: 100%; border-radius: 99px; transition: width 0.3s;
+    background: linear-gradient(90deg, #7928ca, #e94560, #ff8c00);
+    width: 0%;
+  }
+
+  .btn {
+    width: 100%; padding: 15px;
+    background: linear-gradient(135deg, #e94560 0%, #c62a47 100%);
+    color: white; border: none; border-radius: 12px;
+    font-size: 16px; font-weight: 700; cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 20px rgba(233,69,96,0.35);
+    letter-spacing: 0.3px;
+  }
+  .btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(233,69,96,0.5);
+  }
+  .btn:disabled {
+    background: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.3); cursor: not-allowed;
+    box-shadow: none; transform: none;
+  }
+  .status {
+    margin-top: 16px; padding: 13px 16px; border-radius: 10px;
+    font-size: 14px; display: none; font-weight: 500;
+  }
+  .status.running { background: rgba(66,153,225,0.15); color: #90cdf4; border: 1px solid rgba(66,153,225,0.3); display: block; }
+  .status.error   { background: rgba(233,69,96,0.15);  color: #fc8181; border: 1px solid rgba(233,69,96,0.3);  display: block; }
+  .status.success { background: rgba(0,210,160,0.12);  color: #00d2a0; border: 1px solid rgba(0,210,160,0.3);  display: block; }
+  .drop-zone {
+    border: 2px dashed rgba(255,255,255,0.2); border-radius: 14px;
+    padding: 28px 20px; text-align: center; cursor: pointer;
+    transition: all 0.2s; background: rgba(255,255,255,0.03);
+    margin-bottom: 4px;
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: #22c55e; background: rgba(34,197,94,0.08);
+    transform: scale(1.01);
+  }
+  .drop-icon { font-size: 32px; margin-bottom: 8px; }
+  .drop-text { font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.7); margin-bottom: 4px; }
+  .drop-sub  { font-size: 12px; color: rgba(255,255,255,0.35); }
+  .spinner {
+    display: inline-block; width: 13px; height: 13px;
+    border: 2px solid rgba(144,205,244,0.3); border-top-color: #90cdf4;
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+    margin-right: 8px; vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <div class="logo">📊</div>
+    <div>
+      <h1>Bank Reconcile Agent</h1>
+    </div>
+  </div>
+  <p class="subtitle">ZION &times; SACOMBANK &mdash; Upload 6 file Excel để chạy đối soát tự động</p>
+  <div class="divider"></div>
+
+  <div class="drop-zone" id="drop-zone" onclick="document.getElementById('f-all').click()" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+    <div class="drop-icon">📂</div>
+    <div class="drop-text">Kéo thả hoặc click để chọn tất cả 6 file cùng lúc</div>
+    <div class="drop-sub">Hệ thống tự nhận dạng file theo tên</div>
+    <input type="file" id="f-all" accept=".xlsx" multiple onchange="autoDetect(this.files)" style="display:none">
+  </div>
+  <div class="divider" style="margin-top:20px"></div>
+
+  <div class="file-grid">
+    <div class="file-item">
+      <label><span class="badge badge-zion">ZION</span> Thành công</label>
+      <div class="file-btn" id="btn-TC" onclick="document.getElementById('f-TC').click()">
+        <span class="icon">📄</span><span class="file-name" id="name-TC">Chọn file...</span>
+      </div>
+      <input type="file" id="f-TC" accept=".xlsx" onchange="setFile('TC',this)">
+    </div>
+    <div class="file-item">
+      <label><span class="badge badge-zion">ZION</span> Hoàn tiền</label>
+      <div class="file-btn" id="btn-RF" onclick="document.getElementById('f-RF').click()">
+        <span class="icon">📄</span><span class="file-name" id="name-RF">Chọn file...</span>
+      </div>
+      <input type="file" id="f-RF" accept=".xlsx" onchange="setFile('RF',this)">
+    </div>
+    <div class="file-item">
+      <label><span class="badge badge-zion">ZION</span> Hoàn tiền CV</label>
+      <div class="file-btn" id="btn-CV" onclick="document.getElementById('f-CV').click()">
+        <span class="icon">📄</span><span class="file-name" id="name-CV">Chọn file...</span>
+      </div>
+      <input type="file" id="f-CV" accept=".xlsx" onchange="setFile('CV',this)">
+    </div>
+    <div class="file-item">
+      <label><span class="badge badge-apple">🍎</span> Apple Pay</label>
+      <div class="file-btn" id="btn-AP" onclick="document.getElementById('f-AP').click()">
+        <span class="icon">📄</span><span class="file-name" id="name-AP">Chọn file...</span>
+      </div>
+      <input type="file" id="f-AP" accept=".xlsx" onchange="setFile('AP',this)">
+    </div>
+    <div class="file-item">
+      <label><span class="badge badge-jcb">JCB</span> BIN Lookup</label>
+      <div class="file-btn" id="btn-JCB" onclick="document.getElementById('f-JCB').click()">
+        <span class="icon">📄</span><span class="file-name" id="name-JCB">Chọn file...</span>
+      </div>
+      <input type="file" id="f-JCB" accept=".xlsx" onchange="setFile('JCB',this)">
+    </div>
+    <div class="file-item">
+      <label><span class="badge badge-sacom">SACOMBANK</span></label>
+      <div class="file-btn" id="btn-SB" onclick="document.getElementById('f-SB').click()">
+        <span class="icon">📄</span><span class="file-name" id="name-SB">Chọn file...</span>
+      </div>
+      <input type="file" id="f-SB" accept=".xlsx" onchange="setFile('SB',this)">
+    </div>
+  </div>
+
+  <div class="bottom-row">
+    <div class="period-wrap">
+      <label>Kỳ (MM):</label>
+      <input type="text" id="period" value="05" maxlength="2" placeholder="05">
+    </div>
+    <div class="progress-bar-wrap">
+      <div class="progress-label" id="progress-label">0 / 6 file đã chọn</div>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    </div>
+  </div>
+
+  <button class="btn" id="run-btn" onclick="runRecon()" disabled>⚡ Chạy đối soát</button>
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+const keys = ['TC','RF','CV','AP','JCB','SB'];
+const files = {};
+
+// Bảng nhận dạng file theo tên — dùng chuỗi normalize để xử lý tiếng Việt
+function normalize(s) {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/đ/gi,'d').toLowerCase();
 }
 
+const PATTERNS = {
+  CV:  s => /hoantiencv|hoantien.*cv|cv.*hoantien/i.test(s),
+  TC:  s => /datazion/.test(s) && /thanh.*cong|cong.*thanh/.test(s),
+  RF:  s => /(datazion|zion)/.test(s) && /hoan.*tien|tien.*hoan/.test(s) && !/cv/.test(s),
+  AP:  s => /applepay|apple.?pay/.test(s),
+  JCB: s => /jcb/.test(s),
+  SB:  s => /sacombank|sacom/.test(s),
+};
 
-def _do_reconcile():
-    tc, rf, summ = run_recon()
-    out = os.path.join(C.OUTPUT_DIR, C.OUTPUT_XLSX)
-    build_report(tc, rf, summ, C.RECON_PERIOD, out)
-    return {"recon_period": C.RECON_PERIOD, "report_path": out, "summary": summ}
+function detectKey(filename) {
+  const n = normalize(filename);
+  // CV phải check trước RF vì cùng có "hoan tien"
+  for (const key of ['CV','TC','RF','AP','JCB','SB']) {
+    if (PATTERNS[key](n)) return key;
+  }
+  return null;
+}
+
+function applyFile(key, file) {
+  files[key] = file;
+  document.getElementById('name-' + key).textContent = file.name;
+  const btn = document.getElementById('btn-' + key);
+  btn.classList.add('selected');
+  btn.querySelector('.icon').textContent = '✅';
+}
+
+function autoDetect(fileList) {
+  const unmatched = [];
+  Array.from(fileList).forEach(f => {
+    const key = detectKey(f.name);
+    if (key) applyFile(key, f);
+    else unmatched.push(f.name);
+  });
+  if (unmatched.length) {
+    const s = document.getElementById('status');
+    s.className = 'status error';
+    s.style.display = 'block';
+    s.innerHTML = '⚠️ Không nhận dạng được: ' + unmatched.join(', ');
+  }
+  checkReady();
+}
+
+function onDragOver(e) { e.preventDefault(); document.getElementById('drop-zone').classList.add('dragover'); }
+function onDragLeave(e) { document.getElementById('drop-zone').classList.remove('dragover'); }
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('dragover');
+  autoDetect(e.dataTransfer.files);
+}
+
+function setFile(key, input) {
+  if (!input.files[0]) return;
+  applyFile(key, input.files[0]);
+  checkReady();
+}
+
+function checkReady() {
+  const count = keys.filter(k => files[k]).length;
+  const ready = count === keys.length;
+  document.getElementById('run-btn').disabled = !ready;
+  document.getElementById('progress-label').textContent = count + ' / 6 file đã chọn';
+  document.getElementById('progress-fill').style.width = (count / 6 * 100) + '%';
+}
+
+async function runRecon() {
+  const status = document.getElementById('status');
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  status.className = 'status running';
+  status.innerHTML = '<span class="spinner"></span> Đang xử lý đối soát, vui lòng chờ...';
+
+  const form = new FormData();
+  keys.forEach(k => form.append(k, files[k]));
+  form.append('period', document.getElementById('period').value || '05');
+
+  try {
+    const res = await fetch('/reconcile', { method: 'POST', body: form });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Lỗi không xác định' }));
+      throw new Error(err.error || res.statusText);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'DOI_SOAT_ZION_SACOMBANK.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+    status.className = 'status success';
+    status.innerHTML = '✅ Đối soát hoàn tất! File Excel đã được tải xuống.';
+  } catch (e) {
+    status.className = 'status error';
+    status.innerHTML = '❌ Lỗi: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>"""
 
 
 class Handler(BaseHTTPRequestHandler):
-    def _json(self, code, payload):
-        body = json.dumps(payload, ensure_ascii=False, default=float).encode("utf-8")
+    def _send(self, code, content_type, body):
+        if isinstance(body, str):
+            body = body.encode("utf-8")
         self.send_response(code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
+    def _json(self, code, payload):
+        self._send(code, "application/json; charset=utf-8",
+                   json.dumps(payload, ensure_ascii=False, default=float))
+
     def do_GET(self):
         if self.path.rstrip("/") in ("", "/"):
-            return self._json(200, INFO)
-        if self.path == "/health":
-            return self._json(200, {"status": "ok"})
-        if self.path == "/report":
-            out = os.path.join(C.OUTPUT_DIR, C.OUTPUT_XLSX)
-            if not os.path.exists(out):
-                return self._json(404, {"error": "Chua co bao cao. Goi POST /reconcile truoc."})
-            data = open(out, "rb").read()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            self.send_header("Content-Disposition", f'attachment; filename="{C.OUTPUT_XLSX}"')
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-            return
-        return self._json(404, {"error": "not found"})
+            self._send(200, "text/html; charset=utf-8", HTML)
+        elif self.path == "/health":
+            self._json(200, {"status": "ok"})
+        else:
+            self._json(404, {"error": "not found"})
 
     def do_POST(self):
-        if self.path.rstrip("/") == "/reconcile":
-            try:
-                return self._json(200, _do_reconcile())
-            except Exception as e:  # noqa
-                return self._json(500, {"error": str(e)})
-        return self._json(404, {"error": "not found"})
+        if self.path.rstrip("/") != "/reconcile":
+            self._json(404, {"error": "not found"})
+            return
+        try:
+            ctype, pdict = cgi.parse_header(self.headers.get("Content-Type", ""))
+            if ctype != "multipart/form-data":
+                self._json(400, {"error": "Yeu cau multipart/form-data"})
+                return
+            pdict["boundary"] = pdict["boundary"].encode()
+            pdict["CONTENT-LENGTH"] = int(self.headers.get("Content-Length", 0))
+            fields = cgi.parse_multipart(self.rfile, pdict)
 
-    def log_message(self, *a):  # gon log
+            required = ["TC", "RF", "CV", "AP", "JCB", "SB"]
+            missing = [k for k in required if k not in fields or not fields[k]]
+            if missing:
+                self._json(400, {"error": f"Thieu file: {missing}"})
+                return
+
+            period = (fields.get("period") or ["05"])[0]
+            if isinstance(period, bytes):
+                period = period.decode()
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                outdir = os.path.join(tmpdir, "output")
+                os.makedirs(outdir)
+
+                file_map = {}
+                for key in required:
+                    data = fields[key][0]
+                    if isinstance(data, str):
+                        data = data.encode()
+                    fpath = os.path.join(tmpdir, f"{key}.xlsx")
+                    with open(fpath, "wb") as f:
+                        f.write(data)
+                    file_map[key] = fpath
+
+                old_env = {}
+                env_updates = {
+                    "INPUT_DIR": tmpdir,
+                    "OUTPUT_DIR": outdir,
+                    "RECON_PERIOD": period,
+                    "FILE_TC": f"{key}.xlsx",
+                }
+                for k in required:
+                    env_updates[f"FILE_{k}"] = f"{k}.xlsx"
+                for k, v in env_updates.items():
+                    old_env[k] = os.environ.get(k)
+                    os.environ[k] = v
+
+                import importlib
+                importlib.reload(C)
+                tc, rf, summ = run_recon()
+                out_path = os.path.join(outdir, "DOI_SOAT_ZION_SACOMBANK.xlsx")
+                build_report(tc, rf, summ, period, out_path)
+
+                for k, v in old_env.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
+                importlib.reload(C)
+
+                with open(out_path, "rb") as f:
+                    xlsx_data = f.read()
+
+            fname = "DOI_SOAT_ZION_SACOMBANK.xlsx"
+            self.send_response(200)
+            self.send_header("Content-Type",
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
+            self.send_header("Content-Length", str(len(xlsx_data)))
+            self.end_headers()
+            self.wfile.write(xlsx_data)
+
+        except Exception as e:
+            self._json(500, {"error": str(e)})
+
+    def log_message(self, *a):
         pass
 
 
 def main():
-    print(f"Agent dang chay tai 0.0.0.0:{PORT}  (POST /reconcile de doi soat)")
+    print(f"Agent dang chay tai 0.0.0.0:{PORT}")
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 
 
