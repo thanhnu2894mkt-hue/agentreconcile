@@ -1,0 +1,7 @@
+# Bao gom data/input (6 file that) vao image; chi loai output & rac
+data/output/*
+!data/output/.gitkeep
+__pycache__/
+*.pyc
+.venv/
+.git/

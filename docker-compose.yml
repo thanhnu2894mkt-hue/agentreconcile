@@ -1,0 +1,11 @@
+services:
+  recon-agent:
+    build: .
+    image: zion-recon-agent:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/output:/app/data/output
+    environment:
+      RECON_PERIOD: "05"
+      PORT: "8000"
