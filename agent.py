@@ -336,9 +336,9 @@ function normalize(s) {
 }
 
 const PATTERNS = {
-  CV:  s => /hoantiencv|hoantien.*cv|cv.*hoantien/i.test(s),
-  TC:  s => /datazion/.test(s) && /thanh.*cong|cong.*thanh/.test(s),
-  RF:  s => /(datazion|zion)/.test(s) && /hoan.*tien|tien.*hoan/.test(s) && !/cv/.test(s),
+  CV:  s => /cv/.test(s) && /hoan.*tien|hoantien/.test(s),
+  TC:  s => /zion/.test(s) && /thanh.*cong/.test(s),
+  RF:  s => /zion/.test(s) && /hoan.*tien|hoantien/.test(s) && !/cv/.test(s),
   AP:  s => /applepay|apple.?pay/.test(s),
   JCB: s => /jcb/.test(s),
   SB:  s => /sacombank|sacom/.test(s),
