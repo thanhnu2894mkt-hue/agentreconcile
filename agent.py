@@ -157,6 +157,13 @@ HTML = """<!DOCTYPE html>
   .status.running { background: rgba(66,153,225,0.15); color: #90cdf4; border: 1px solid rgba(66,153,225,0.3); display: block; }
   .status.error   { background: rgba(233,69,96,0.15);  color: #fc8181; border: 1px solid rgba(233,69,96,0.3);  display: block; }
   .status.success { background: rgba(0,210,160,0.12);  color: #00d2a0; border: 1px solid rgba(0,210,160,0.3);  display: block; }
+  .tpl-link {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; color: rgba(255,255,255,0.35);
+    text-decoration: none; margin-top: 5px;
+    transition: color 0.15s;
+  }
+  .tpl-link:hover { color: #00d2a0; }
   .drop-zone {
     border: 2px dashed rgba(255,255,255,0.2); border-radius: 14px;
     padding: 28px 20px; text-align: center; cursor: pointer;
@@ -236,6 +243,7 @@ HTML = """<!DOCTYPE html>
         <span class="clear-btn" onclick="clearFile(event,'TC')" title="Xóa file">✕</span>
       </div>
       <input type="file" id="f-TC" accept=".xlsx" onchange="setFile('TC',this)">
+      <a class="tpl-link" href="/template/TC" download="template_ZION_thanh_cong.xlsx">📥 Tải file mẫu</a>
     </div>
     <div class="file-item">
       <label><span class="badge badge-zion">ZION</span> Hoàn tiền</label>
@@ -244,6 +252,7 @@ HTML = """<!DOCTYPE html>
         <span class="clear-btn" onclick="clearFile(event,'RF')" title="Xóa file">✕</span>
       </div>
       <input type="file" id="f-RF" accept=".xlsx" onchange="setFile('RF',this)">
+      <a class="tpl-link" href="/template/RF" download="template_ZION_hoan_tien.xlsx">📥 Tải file mẫu</a>
     </div>
     <div class="file-item">
       <label><span class="badge badge-zion">ZION</span> Hoàn tiền CV</label>
@@ -252,6 +261,7 @@ HTML = """<!DOCTYPE html>
         <span class="clear-btn" onclick="clearFile(event,'CV')" title="Xóa file">✕</span>
       </div>
       <input type="file" id="f-CV" accept=".xlsx" onchange="setFile('CV',this)">
+      <a class="tpl-link" href="/template/CV" download="template_ZION_hoan_tien_CV.xlsx">📥 Tải file mẫu</a>
     </div>
     <div class="file-item">
       <label><span class="badge badge-apple">🍎</span> Apple Pay</label>
@@ -260,6 +270,7 @@ HTML = """<!DOCTYPE html>
         <span class="clear-btn" onclick="clearFile(event,'AP')" title="Xóa file">✕</span>
       </div>
       <input type="file" id="f-AP" accept=".xlsx" onchange="setFile('AP',this)">
+      <a class="tpl-link" href="/template/AP" download="template_APPLEPAY.xlsx">📥 Tải file mẫu</a>
     </div>
     <div class="file-item">
       <label><span class="badge badge-jcb">JCB</span> BIN Lookup</label>
@@ -268,6 +279,7 @@ HTML = """<!DOCTYPE html>
         <span class="clear-btn" onclick="clearFile(event,'JCB')" title="Xóa file">✕</span>
       </div>
       <input type="file" id="f-JCB" accept=".xlsx" onchange="setFile('JCB',this)">
+      <a class="tpl-link" href="/template/JCB" download="template_JCB.xlsx">📥 Tải file mẫu</a>
     </div>
     <div class="file-item">
       <label><span class="badge badge-sacom">SACOMBANK</span></label>
@@ -276,6 +288,7 @@ HTML = """<!DOCTYPE html>
         <span class="clear-btn" onclick="clearFile(event,'SB')" title="Xóa file">✕</span>
       </div>
       <input type="file" id="f-SB" accept=".xlsx" onchange="setFile('SB',this)">
+      <a class="tpl-link" href="/template/SB" download="template_SACOMBANK.xlsx">📥 Tải file mẫu</a>
     </div>
   </div>
 
@@ -500,8 +513,45 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "text/html; charset=utf-8", HTML)
         elif self.path == "/health":
             self._json(200, {"status": "ok"})
+        elif self.path.startswith("/template/"):
+            key = self.path.split("/template/")[-1].upper().rstrip("/")
+            self._serve_template(key)
         else:
             self._json(404, {"error": "not found"})
+
+    def _serve_template(self, key):
+        import io as _io, openpyxl as _xl
+        TEMPLATES = {
+            "TC":  {"headers": [["Bank Trans ID", "Is On Us", "Fee Rate", "Amount"]]},
+            "RF":  {"headers": [["Refund Bank Trans ID"]]},
+            "CV":  {"headers": [["Refund Bank Trans ID", "PHI ZLP"]]},
+            "AP":  {"headers": [
+                        ["zalopay_acct", "Apple pay", "PaymentBatchDetail", "1.00", ""],
+                        ["RequestDate", "RequestID", "MerchantReferenceNumber", "BinCountry",
+                         "BinIssuer", "Amount", "Status", "MerchantID", "BatchID", "BatchDate",
+                         "LocalizedRequestDate", "BinScheme", "RCode", "BinNumber",
+                         "ApplicationName", "RMsg"],
+                    ]},
+            "JCB": {"headers": [["BIN 8 SỐ"]]},
+            "SB":  {"headers": [["BOOK_DATE", "ReqRecId", "DISCOUNT"]]},
+        }
+        if key not in TEMPLATES:
+            self._json(404, {"error": "template not found"}); return
+        wb = _xl.Workbook()
+        ws = wb.active
+        for row in TEMPLATES[key]["headers"]:
+            ws.append(row)
+        buf = _io.BytesIO()
+        wb.save(buf)
+        data = buf.getvalue()
+        fname = f"template_{key}.xlsx"
+        self.send_response(200)
+        self.send_header("Content-Type",
+                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_POST(self):
         if self.path.rstrip("/") == "/validate-file":
