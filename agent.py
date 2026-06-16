@@ -590,7 +590,15 @@ class Handler(BaseHTTPRequestHandler):
         buf = _io.BytesIO()
         wb.save(buf)
         data = buf.getvalue()
-        fname = f"template_{key}.xlsx"
+        FNAMES = {
+            "TC":  "template_ZION_thanh_cong.xlsx",
+            "RF":  "template_ZION_hoan_tien.xlsx",
+            "CV":  "template_ZION_hoan_tien_CV.xlsx",
+            "AP":  "template_APPLEPAY.xlsx",
+            "JCB": "template_JCB.xlsx",
+            "SB":  "template_SACOMBANK.xlsx",
+        }
+        fname = FNAMES.get(key, f"template_{key}.xlsx")
         self.send_response(200)
         self.send_header("Content-Type",
                          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
