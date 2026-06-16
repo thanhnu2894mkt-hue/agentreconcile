@@ -226,6 +226,14 @@ HTML = """<!DOCTYPE html>
   </div>
   <p class="subtitle">Upload 6 file Excel để chạy đối soát tự động</p>
   <div class="divider"></div>
+  <div style="text-align:right; margin-bottom:10px;">
+    <button onclick="downloadAllTemplates()" style="
+      background:none; border:1px solid rgba(255,255,255,0.15); border-radius:7px;
+      color:rgba(255,255,255,0.45); font-size:12px; padding:5px 12px; cursor:pointer;
+      transition:all 0.2s; display:inline-flex; align-items:center; gap:6px;">
+      📥 Tải tất cả 6 file mẫu
+    </button>
+  </div>
 
   <div class="drop-zone" id="drop-zone" onclick="document.getElementById('f-all').click()" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
     <div class="drop-icon">📂</div>
@@ -417,6 +425,22 @@ async function autoDetect(fileList) {
     setTimeout(() => { if (s.classList.contains('error')) s.style.display='none'; }, 6000);
   }
   checkReady();
+}
+
+function downloadAllTemplates() {
+  const tpls = [
+    {href:'/template/TC', name:'template_ZION_thanh_cong.xlsx'},
+    {href:'/template/RF', name:'template_ZION_hoan_tien.xlsx'},
+    {href:'/template/CV', name:'template_ZION_hoan_tien_CV.xlsx'},
+    {href:'/template/AP', name:'template_APPLEPAY.xlsx'},
+    {href:'/template/JCB', name:'template_JCB.xlsx'},
+    {href:'/template/SB', name:'template_SACOMBANK.xlsx'},
+  ];
+  tpls.forEach((t, i) => setTimeout(() => {
+    const a = document.createElement('a');
+    a.href = t.href; a.download = t.name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }, i * 300));
 }
 
 function onDragOver(e) { e.preventDefault(); document.getElementById('drop-zone').classList.add('dragover'); }
