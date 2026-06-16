@@ -521,25 +521,47 @@ class Handler(BaseHTTPRequestHandler):
 
     def _serve_template(self, key):
         import io as _io, openpyxl as _xl
+        # Full column lists from actual input files
         TEMPLATES = {
-            "TC":  {"headers": [["Bank Trans ID", "Is On Us", "Fee Rate", "Amount"]]},
-            "RF":  {"headers": [["Refund Bank Trans ID"]]},
-            "CV":  {"headers": [["Refund Bank Trans ID", "PHI ZLP"]]},
-            "AP":  {"headers": [
-                        ["zalopay_acct", "Apple pay", "PaymentBatchDetail", "1.00", ""],
-                        ["RequestDate", "RequestID", "MerchantReferenceNumber", "BinCountry",
-                         "BinIssuer", "Amount", "Status", "MerchantID", "BatchID", "BatchDate",
-                         "LocalizedRequestDate", "BinScheme", "RCode", "BinNumber",
-                         "ApplicationName", "RMsg"],
-                    ]},
-            "JCB": {"headers": [["BIN 8 SỐ"]]},
-            "SB":  {"headers": [["BOOK_DATE", "ReqRecId", "DISCOUNT"]]},
+            "TC": [
+                ["Bank Trans ID", "Trace No", "Sub Trans Type", "Amount", "Trans Time",
+                 "Card Type", "BankMID", "Is On Us", "Fee Rate", "Bin No", "L4 Card No"],
+            ],
+            "RF": [
+                ["traceNo", "Refund Bank Trans ID", "Amount", "Refund Amount",
+                 "Refund Trans Time", "Is On Us", "Bank Account", "Fee Rate",
+                 "Sub Trans Type", "Card Scheme", "F6 Card No", "L4 Card No"],
+            ],
+            "CV": [
+                ["traceNo", "Refund Bank Trans ID", "Amount", "Refund Amount",
+                 "Refund Trans Time", "Is On Us", "Bank Account", "Fee Rate",
+                 "Sub Trans Type", "Refund Sub Trans Type", "Card Scheme",
+                 "F6 Card No", "L4 Card No", "BINCOUNTRY", "BINISSER",
+                 "BOOK_DATE (BANK)", "DISCOUNT (BANK)", "PHI +440", "PHI XLGD",
+                 "PHI ZLP", "TỶ LÊ", "Chốt VAT"],
+            ],
+            "AP": [
+                # row 0: metadata (giữ nguyên như file gốc)
+                ["zalopay_acct", "Apple pay", "PaymentBatchDetail", "1.00", ""],
+                # row 1: header thật
+                ["RequestDate", "RequestID", "MerchantReferenceNumber", "BinCountry",
+                 "BinIssuer", "Amount", "Status", "MerchantID", "BatchID", "BatchDate",
+                 "LocalizedRequestDate", "BinScheme", "RCode", "BinNumber",
+                 "ApplicationName", "RMsg"],
+            ],
+            "JCB": [
+                ["BIN 8 SỐ", "6 SỐ ĐẦU", "Ngân hàng", "Viet tat", "Ghi chú loại thẻ", "Notes"],
+            ],
+            "SB": [
+                ["MM_DBA_NAME", "CARDNO", "TRANS_AMOUNT", "BILLING_AMOUNT", "DISCOUNT",
+                 "PROC_DATE", "BOOK_DATE", "CrdType", "ReqRecId"],
+            ],
         }
         if key not in TEMPLATES:
             self._json(404, {"error": "template not found"}); return
         wb = _xl.Workbook()
         ws = wb.active
-        for row in TEMPLATES[key]["headers"]:
+        for row in TEMPLATES[key]:
             ws.append(row)
         buf = _io.BytesIO()
         wb.save(buf)
